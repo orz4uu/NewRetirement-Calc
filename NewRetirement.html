@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>退休金全能模擬器 - 原始彩色強化版</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { --blue: #2980b9; --orange: #e67e22; --green: #27ae60; --bg: #f8f9fa; }
+        body { font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; background: var(--bg); margin: 0; padding: 15px; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #2c3e50; font-size: 1.5em; margin-bottom: 25px; }
+        
+        /* 彩色區塊設定 (對應照片中的參數設定) */
+        .card { padding: 18px; border-radius: 12px; margin-bottom: 20px; border-left: 8px solid; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .investment-card { border-left-color: var(--blue); }
+        .labor-card { border-left-color: var(--orange); }
+        h3 { margin: 0 0 15px 0; font-size: 1.1em; color: #34495e; display: flex; align-items: center; }
+        
+        .input-group { margin-bottom: 12px; }
+        label { display: block; font-size: 0.85em; color: #7f8c8d; margin-bottom: 5px; }
+        input[type="number"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 1em; box-sizing: border-box; outline: none; transition: 0.3s; }
+        input[type="number"]:focus { border-color: var(--blue); box-shadow: 0 0 5px rgba(41, 128, 185, 0.2); }
+        
+        .slider-box { margin-top: 10px; }
+        .slider-header { display: flex; justify-content: space-between; font-size: 0.9em; font-weight: bold; color: var(--orange); }
+        input[type="range"] { width: 100%; margin-top: 8px; cursor: pointer; }
+
+        button { width: 100%; padding: 16px; background: #2c3e50; color: white; border: none; border-radius: 12px; font-size: 1.1em; font-weight: bold; cursor: pointer; margin-top: 10px; transition: 0.3s; }
+        button:hover { background: #34495e; transform: translateY(-2px); }
+
+        /* 結果顯示區 (對應照片 1000011155.jpg) */
+        #resultArea { display: none; margin-top: 30px; animation: fadeIn 0.5s; }
+        .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        .result-box { background: #fdfefe; padding: 15px; border-radius: 10px; text-align: center; border: 1px solid #eee; }
+        .result-box small { color: #95a5a6; font-size: 0.8em; }
+        .result-box div { font-size: 1.2em; font-weight: bold; color: #2c3e50; margin-top: 5px; }
+
+        .chart-container { position: relative; height: 350px; width: 100%; margin-top: 20px; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🚀 退休金全能模擬器</h2>
+
+    <div class="card investment-card">
+        <h3>💰 複利與投資設定</h3>
+        <div class="input-group">
+            <label>初始本金 (元)</label>
+            <input type="number" id="initP" value="1000000">
+        </div>
+        <div class="input-group">
+            <label>每月投入金額 (元)</label>
+            <input type="number" id="monthlyI" value="20000">
+        </div>
+        <div class="input-group">
+            <label>年化報酬率 (%)</label>
+            <input type="number" id="roi" value="7.5" step="0.1">
+        </div>
+        <div class="input-group">
+            <label>累積年期 (距離退休年數)</label>
+            <input type="number" id="years" value="30">
+        </div>
+    </div>
+
+    <div class="card labor-card">
+        <h3>👤 個人勞保設定</h3>
+        <div class="input-group">
+            <label>目前年齡</label>
+            <input type="number" id="currAge" value="50">
+        </div>
+        <div class="input-group">
+            <label>目前勞保年資 (年)</label>
+            <input type="number" id="currTenure" value="25">
+        </div>
+        <div class="input-group">
+            <label>平均投保薪資 (最高45,800)</label>
+            <input type="number" id="salary" value="45800">
+        </div>
+        <div class="slider-box">
+            <div class="slider-header">
+                <span>預期餘命參考線</span>
+                <span id="lifeVal">84 歲</span>
+            </div>
+            <input type="range" id="lifeSpan" min="70" max="100" value="84" oninput="document.getElementById('lifeVal').innerText=this.value + ' 歲'">
+        </div>
+    </div>
+
+    <button onclick="runSimulation()">生成專業分析報告</button>
+
+    <div id="resultArea">
+        <div class="result-grid">
+            <div class="result-box" style="border-top: 4px solid var(--blue);">
+                <small>退休累積資產</small>
+                <div id="resTotal">$0</div>
+            </div>
+            <div class="result-box" style="border-top: 4px solid var(--green);">
+                <small>勞保月領(65歲)</small>
+                <div id="resLabor">$0</div>
+            </div>
+        </div>
+        <div class="chart-container">
+            <canvas id="mainChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+let myChart = null;
+
+function runSimulation() {
+    // 讀取數值
+    const p = parseFloat(document.getElementById('initP').value);
+    const m = parseFloat(document.getElementById('monthlyI').value);
+    const r = parseFloat(document.getElementById('roi').value) / 100;
+    const y = parseInt(document.getElementById('years').value);
+    const age = parseInt(document.getElementById('currAge').value);
+    const tenure = parseInt(document.getElementById('currTenure').value);
+    const sal = parseFloat(document.getElementById('salary').value);
+    const life = parseInt(document.getElementById('lifeSpan').value);
+
+    // 1. 複利計算
+    let total = p;
+    for(let i=0; i<y; i++) { total = (total * (1 + r)) + (m * 12); }
+    
+    // 2. 勞保計算
+    const getP = (rAge) => {
+        let t = tenure + (rAge - age);
+        let b = sal * t * 0.0155;
+        if(rAge === 60) return b * 0.8;
+        if(rAge === 70) return b * 1.2;
+        return b;
+    };
+    const p60 = getP(60), p65 = getP(65), p70 = getP(70);
+
+    // 3. 更新介面
+    document.getElementById('resultArea').style.display = 'block';
+    document.getElementById('resTotal').innerText = '$' + Math.round(total).toLocaleString();
+    document.getElementById('resLabor').innerText = '$' + Math.round(p65).toLocaleString();
+
+    // 4. 繪製圖表 (對應照片 1000011155.jpg)
+    const labels = [];
+    const d60 = [], d65 = [], d70 = [];
+    for(let i=60; i<=life; i++) {
+        labels.push(i + '歲');
+        d60.push(i >= 60 ? Math.round((i-60)*12*p60) : 0);
+        d65.push(i >= 65 ? Math.round((i-65)*12*p65) : 0);
+        d70.push(i >= 70 ? Math.round((i-70)*12*p70) : 0);
+    }
+
+    const ctx = document.getElementById('mainChart').getContext('2d');
+    if(myChart) myChart.destroy();
+    myChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                { label: '60歲提早領', data: d60, borderColor: '#27ae60', backgroundColor: '#27ae60', fill: false, tension: 0.1 },
+                { label: '65歲正常領', data: d65, borderColor: '#2980b9', backgroundColor: '#2980b9', fill: false, tension: 0.1 },
+                { label: '70歲延後領', data: d70, borderColor: '#e67e22', backgroundColor: '#e67e22', fill: false, tension: 0.1 }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' } },
+            scales: { y: { ticks: { callback: v => '$' + (v/10000) + '萬' } } }
+        }
+    });
+}
+</script>
+
+</body>
+</html>
