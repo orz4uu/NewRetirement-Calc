@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>退休金全能模擬器</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --secondary: #64748b;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg: #f8fafc;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding: 20px;
+            color: #1e293b;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) { .container { grid-template-columns: 1fr; } }
+        .card {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+        h2 { margin-top: 0; font-size: 1.25rem; display: flex; align-items: center; gap: 8px; }
+        .input-group { margin-bottom: 16px; }
+        label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 4px; color: var(--secondary); }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+        .slider-label { display: flex; justify-content: space-between; align-items: center; }
+        input[type="range"] { margin: 10px 0; }
+        .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+        .result-box {
+            background: #f1f5f9;
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .result-box .value { font-size: 1.25rem; font-weight: 700; color: var(--primary); display: block; }
+        .result-box .label { font-size: 0.75rem; color: var(--secondary); }
+        .analysis-report {
+            background: #f0fdf4;
+            border-left: 4px solid var(--success);
+            padding: 16px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+        .labour-options {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .option-card {
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+            border: 2px solid #e2e8f0;
+        }
+        .option-card.active-early { border-color: var(--success); background: #f0fdf4; }
+        .option-card.active-normal { border-color: var(--secondary); background: #f1f5f9; }
+        .option-card.active-late { border-color: var(--warning); background: #fffbeb; }
+        .highlight { font-weight: bold; color: var(--danger); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="card">
+        <h2>⚙️ 參數設定</h2>
+        
+        <div class="input-group">
+            <label>初始本金 (元)</label>
+            <input type="number" id="initCapital" value="1000000" oninput="updateAll()">
+        </div>
+        <div class="input-group">
+            <label>每月定期定額 (元)</label>
+            <input type="number" id="monthlyInvest" value="20000" oninput="updateAll()">
+        </div>
+        <div class="input-group">
+            <div class="slider-label">
+                <label>預期年化報酬率 (%)</label>
+                <span id="returnVal">7.5%</span>
+            </div>
+            <input type="range" id="returnRate" min="0" max="15" step="0.1" value="7.5" oninput="updateAll()">
+        </div>
+        <div class="input-group">
+            <div class="slider-label">
+                <label>距離退休還有幾年 (累積期)</label>
+                <span id="yearsVal">30年</span>
+            </div>
+            <input type="range" id="years" min="1" max="50" value="30" oninput="updateAll()">
+        </div>
+        <hr>
+        <h3>勞保年金參數</h3>
+        <div class="input-group">
+            <label>最高 60 個月平均投保薪資</label>
+            <input type="number" id="avgSalary" value="45800" oninput="updateAll()">
+        </div>
+        <div class="input-group">
+            <label>目前已累積年資 (年)</label>
+            <input type="number" id="currentYears" value="25" oninput="updateAll()">
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>📊 分析結果</h2>
+        
+        <div class="result-grid">
+            <div class="result-box">
+                <span class="label">退休時累積資產</span>
+                <span class="value" id="totalAsset">$0</span>
+            </div>
+            <div class="result-box">
+                <span class="label">4% 法則每月可用</span>
+                <span class="value" id="monthlyWithdraw">$0</span>
+            </div>
+        </div>
+
+        <canvas id="mainChart" height="200"></canvas>
+
+        <div class="labour-options">
+            <div class="option-card active-early">
+                <div class="label">提早領(60歲)</div>
+                <div class="value" id="earlyP" style="font-weight:bold; color:var(--success)">$0</div>
+                <div class="label" style="font-size:0.7rem">(-20%)</div>
+            </div>
+            <div class="option-card active-normal">
+                <div class="label">正常領(65歲)</div>
+                <div class="value" id="normalP" style="font-weight:bold; color:var(--secondary)">$0</div>
+                <div class="label" style="font-size:0.7rem">(標準)</div>
+            </div>
+            <div class="option-card active-late">
+                <div class="label">延後領(70歲)</div>
+                <div class="value" id="lateP" style="font-weight:bold; color:var(--warning)">$0</div>
+                <div class="label" style="font-size:0.7rem">(+20%)</div>
+            </div>
+        </div>
+
+        <div class="analysis-report" id="report" style="margin-top:20px;">
+            載入中...
+        </div>
+    </div>
+</div>
+
+<script>
+    let chart;
+
+    function formatCurrency(num) {
+        return '$' + Math.round(num).toLocaleString();
+    }
+
+    function calculateLabour(salary, years, modifier) {
+        // 勞保年金公式 A: 年資 * 平均薪資 * 0.775% + 3000
+        // 勞保年金公式 B: 年資 * 平均薪資 * 1.55% (通常擇優選 B)
+        const base = years * salary * 0.0155;
+        return base * (1 + modifier);
+    }
+
+    function updateAll() {
+        const init = parseFloat(document.getElementById('initCapital').value) || 0;
+        const monthly = parseFloat(document.getElementById('monthlyInvest').value) || 0;
+        const rate = parseFloat(document.getElementById('returnRate').value) / 100 / 12;
+        const years = parseInt(document.getElementById('years').value);
+        const salary = parseFloat(document.getElementById('avgSalary').value) || 0;
+        const curYears = parseFloat(document.getElementById('currentYears').value) || 0;
+
+        document.getElementById('returnVal').innerText = document.getElementById('returnRate').value + '%';
+        document.getElementById('yearsVal').innerText = years + '年';
+
+        // 1. Compound Interest Calculation
+        let total = init;
+        let dataPoints = [];
+        let labels = [];
+        for (let i = 0; i <= years; i++) {
+            if (i > 0) {
+                for(let m=0; m<12; m++) {
+                    total = (total + monthly) * (1 + rate);
+                }
+            }
+            dataPoints.push(total);
+            labels.push('第' + i + '年');
+        }
+
+        document.getElementById('totalAsset').innerText = formatCurrency(total);
+        document.getElementById('monthlyWithdraw').innerText = formatCurrency((total * 0.04) / 12);
+
+        // 2. Labour Pension
+        const p60 = calculateLabour(salary, curYears + (60 - 50), -0.2); // 假設目前50歲
+        const p65 = calculateLabour(salary, curYears + (65 - 50), 0);
+        const p70 = calculateLabour(salary, curYears + (70 - 50), 0.2);
+
+        document.getElementById('earlyP').innerText = formatCurrency(p60);
+        document.getElementById('normalP').innerText = formatCurrency(p65);
+        document.getElementById('lateP').innerText = formatCurrency(p70);
+
+        // 3. Analysis Logic
+        const diff6065 = Math.round((p60 * 60) / (p65 - p60) / 12) + 65;
+        const diff6570 = Math.round((p65 * 60) / (p70 - p65) / 12) + 70;
+
+        document.getElementById('report').innerHTML = `
+            <strong>💡 決策分析：</strong><br>
+            1. 提早 vs 正常：若預期壽命超過 <span class="highlight">${diff6065} 歲</span>，選擇「正常領」累積總額較高。<br>
+            2. 正常 vs 延後：您需要活超過 <span class="highlight">${diff6570} 歲</span>，延後領的總效益才會超越正常領。
+        `;
+
+        // 4. Update Chart
+        if (chart) chart.destroy();
+        const ctx = document.getElementById('mainChart').getContext('2d');
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '資產累積曲線',
+                    data: dataPoints,
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { callback: v => (v/1000000).toFixed(0) + 'M' } } }
+            }
+        });
+    }
+
+    updateAll();
+</script>
+</body>
+</html>
